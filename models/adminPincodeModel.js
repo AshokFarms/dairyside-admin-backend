@@ -16,7 +16,8 @@ const AdminPincode = {
     }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const [rows] = await pool.query(
-      `SELECT id, pincode, area_name, city, state, is_active, launching_on, created_at, updated_at
+      `SELECT id, pincode, area_name, city, state, is_active, launching_on,
+              delivery_fee, min_order_amount, morning, evening, created_at, updated_at
        FROM serviceable_pincodes ${whereSql}
        ORDER BY pincode ASC LIMIT ? OFFSET ?`,
       [...params, limit, offset]
@@ -32,8 +33,10 @@ const AdminPincode = {
 
   create: async (data) => {
     const [result] = await pool.query(
-      `INSERT INTO serviceable_pincodes (pincode, area_name, city, state, is_active, launching_on)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO serviceable_pincodes
+        (pincode, area_name, city, state, is_active, launching_on,
+         delivery_fee, min_order_amount, morning, evening)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         data.pincode,
         data.area_name || null,
@@ -41,6 +44,10 @@ const AdminPincode = {
         data.state || null,
         data.is_active === false ? 0 : 1,
         data.launching_on || null,
+        data.delivery_fee ?? 0,
+        data.min_order_amount ?? 0,
+        data.morning === false ? 0 : 1,
+        data.evening === false ? 0 : 1,
       ]
     );
     return result.insertId;
@@ -49,16 +56,18 @@ const AdminPincode = {
   update: async (id, data) => {
     const fields = [];
     const params = [];
-    ['area_name', 'city', 'state', 'launching_on'].forEach((k) => {
+    ['area_name', 'city', 'state', 'launching_on', 'delivery_fee', 'min_order_amount'].forEach((k) => {
       if (data[k] !== undefined) {
         fields.push(`${k} = ?`);
         params.push(data[k] === '' ? null : data[k]);
       }
     });
-    if (data.is_active !== undefined) {
-      fields.push('is_active = ?');
-      params.push(data.is_active ? 1 : 0);
-    }
+    ['is_active', 'morning', 'evening'].forEach((k) => {
+      if (data[k] !== undefined) {
+        fields.push(`${k} = ?`);
+        params.push(data[k] ? 1 : 0);
+      }
+    });
     if (!fields.length) return 0;
     params.push(id);
     const [result] = await pool.query(`UPDATE serviceable_pincodes SET ${fields.join(', ')} WHERE id = ?`, params);

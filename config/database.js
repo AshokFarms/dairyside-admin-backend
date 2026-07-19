@@ -15,6 +15,9 @@ const pool = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
+  // Remote managed DB over WAN — the 10s default intermittently times out on
+  // fresh connections (observed ETIMEDOUT); give handshakes more headroom.
+  connectTimeout: 30000,
   timezone: 'Z', // store/read in UTC; business tz handling stays in app logic
 });
 
@@ -28,5 +31,11 @@ pool
   .catch((err) => {
     logger.error('db.connection_failed', { message: err.message });
   });
+
+// Absorb pool-level errors (e.g. the startup probe racing pool.end() in
+// one-shot scripts, or a dropped keep-alive) — they are logged, never fatal.
+pool.pool.on('error', (err) => {
+  logger.error('db.pool_error', { message: err.message });
+});
 
 module.exports = pool;

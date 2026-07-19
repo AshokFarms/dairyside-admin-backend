@@ -11,19 +11,35 @@ const LOW_STOCK_THRESHOLD = Number(process.env.LOW_STOCK_THRESHOLD) || 20;
 const num = (v) => Number(v || 0);
 const pct = (part, total) => (total > 0 ? Math.round((num(part) / num(total)) * 100) : 0);
 
+// The stats burst opens several pool connections at once; over the WAN to the
+// managed DB a COLD pool occasionally times out on the first connect. One
+// retry after a short pause rides through that without masking real outages.
+const isTransient = (err) => err && (err.code === 'ETIMEDOUT' || err.code === 'ECONNRESET');
+async function withRetry(fn) {
+  try {
+    return await fn();
+  } catch (err) {
+    if (!isTransient(err)) throw err;
+    await new Promise((r) => setTimeout(r, 500));
+    return fn();
+  }
+}
+
 async function getStats() {
   const today = istDateString();
   const weekStart = istDateStringMinus(6); // inclusive 7-day window
   const monthStart = istMonthStart();
 
-  const [orders, deliveries, subs, trial, customers, lowStock] = await Promise.all([
-    Dashboard.orderAggregates({ today, weekStart, monthStart }),
-    Dashboard.deliveryAggregates({ today }),
-    Dashboard.subscriptionAggregates({ today }),
-    Dashboard.trialAggregates(),
-    Dashboard.customerAggregates({ today }),
-    Dashboard.lowStockCount(LOW_STOCK_THRESHOLD),
-  ]);
+  const [orders, deliveries, subs, trial, customers, lowStock] = await withRetry(() =>
+    Promise.all([
+      Dashboard.orderAggregates({ today, weekStart, monthStart }),
+      Dashboard.deliveryAggregates({ today }),
+      Dashboard.subscriptionAggregates({ today }),
+      Dashboard.trialAggregates(),
+      Dashboard.customerAggregates({ today }),
+      Dashboard.lowStockCount(LOW_STOCK_THRESHOLD),
+    ])
+  );
 
   return {
     todayRevenue: num(orders.todayRevenue),

@@ -69,29 +69,33 @@ app.use('/api/products', adminLimiter, legacyProducts);
 app.use(notFound);
 app.use(errorHandler);
 
-const server = app.listen(config.port, () => {
-  logger.info('server.started', { port: config.port, env: config.env });
-});
-
-// ── Graceful shutdown ──
-function shutdown(signal) {
-  logger.info('server.shutdown', { signal });
-  server.close(async () => {
-    try {
-      await pool.end();
-    } catch (err) {
-      logger.error('pool.close_failed', { message: err.message });
-    }
-    process.exit(0);
+// Only bind a port when run directly (`node server.js`). When required by tests
+// (supertest drives the app object in-process) we skip listen + signal handlers.
+if (require.main === module) {
+  const server = app.listen(config.port, () => {
+    logger.info('server.started', { port: config.port, env: config.env });
   });
-  // Force-exit if connections don't drain in time.
-  setTimeout(() => process.exit(1), 10000).unref();
-}
 
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
-process.on('unhandledRejection', (reason) => {
-  logger.error('unhandledRejection', { message: reason?.message || String(reason) });
-});
+  // ── Graceful shutdown ──
+  const shutdown = (signal) => {
+    logger.info('server.shutdown', { signal });
+    server.close(async () => {
+      try {
+        await pool.end();
+      } catch (err) {
+        logger.error('pool.close_failed', { message: err.message });
+      }
+      process.exit(0);
+    });
+    // Force-exit if connections don't drain in time.
+    setTimeout(() => process.exit(1), 10000).unref();
+  };
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('unhandledRejection', (reason) => {
+    logger.error('unhandledRejection', { message: reason?.message || String(reason) });
+  });
+}
 
 module.exports = app;

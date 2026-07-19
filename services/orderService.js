@@ -3,6 +3,7 @@ const AdminOrder = require('../models/adminOrderModel');
 const { ApiError } = require('../middleware/errorHandler');
 const { parsePagination } = require('../utils/pagination');
 const { formatOrderNumber } = require('../utils/orderNumber');
+const { notifyOrdersDelivered } = require('./orderNotification.service');
 
 const num = (v) => Number(v || 0);
 
@@ -32,6 +33,8 @@ function buildAddress(o) {
     area: o.area,
     pincode: o.pincode,
     phone: o.address_phone,
+    // Single display string so the UI never has to guess the column layout.
+    formatted: [o.flat_no, o.street_name, o.landmark, o.area].filter(Boolean).join(', '),
   };
 }
 
@@ -73,14 +76,16 @@ async function getById(id) {
       phone: o.customer_phone || null,
     },
     address: buildAddress(o),
+    // Field names match the admin UI's OrderDetail contract exactly.
     items: [
       {
-        name: o.product_name,
-        variant: o.size_label,
+        id: o.id,
+        product_name: o.product_name,
+        variant_label: o.size_label,
         sku: o.sku,
         quantity: num(o.items_count),
-        price: num(o.sale_price),
-        total: subtotal,
+        unit_price: num(o.sale_price),
+        total_price: subtotal,
       },
     ],
     subtotal,
@@ -98,6 +103,8 @@ async function getById(id) {
 async function updateStatus(id, status) {
   const affected = await AdminOrder.updateStatus(id, status);
   if (!affected) throw new ApiError(404, 'Order not found');
+  // Delivered email (one-time orders only) — fire-and-forget.
+  if (status === 'delivered') notifyOrdersDelivered([Number(id)]);
   return { id, status };
 }
 

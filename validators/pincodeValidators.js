@@ -7,9 +7,6 @@ const listQuery = Joi.object({
   search: Joi.string().trim().allow(''),
 });
 
-// Only the columns that actually exist on serviceable_pincodes are accepted.
-// UI-only fields (delivery_fee, min_order_amount, morning, evening) have no
-// backing columns yet (see DDL handoff) and are intentionally not persisted.
 const createBody = Joi.object({
   pincode: Joi.string()
     .pattern(/^\d{6}$/)
@@ -20,6 +17,10 @@ const createBody = Joi.object({
   state: Joi.string().trim().max(80).allow(null, ''),
   is_active: Joi.boolean().default(true),
   launching_on: Joi.date().iso().allow(null),
+  delivery_fee: Joi.number().precision(2).min(0).max(10000),
+  min_order_amount: Joi.number().precision(2).min(0).max(100000),
+  morning: Joi.boolean(),
+  evening: Joi.boolean(),
 });
 
 const updateBody = Joi.object({
@@ -28,6 +29,10 @@ const updateBody = Joi.object({
   state: Joi.string().trim().max(80).allow(null, ''),
   is_active: Joi.boolean(),
   launching_on: Joi.date().iso().allow(null),
+  delivery_fee: Joi.number().precision(2).min(0).max(10000),
+  min_order_amount: Joi.number().precision(2).min(0).max(100000),
+  morning: Joi.boolean(),
+  evening: Joi.boolean(),
 }).min(1);
 
 const idParam = Joi.object({ id: Joi.number().integer().positive().required() });

@@ -11,10 +11,8 @@ router.get('/:id/orders', validate(v.idParam, 'params'), validate(v.listSubQuery
 router.get('/:id/subscriptions', validate(v.idParam, 'params'), c.getSubscriptions);
 router.get('/:id/wallet', validate(v.idParam, 'params'), validate(v.listSubQuery, 'query'), c.getWallet);
 
-// POST /:id/wallet (manual adjustment) is implemented (customerService.adjustWallet)
-// but NOT mounted yet: it writes wallet_transactions.reference_type = 'adjustment',
-// which requires extending that enum first (see DDL handoff). Enable this line
-// once the ALTER has run:
-// router.post('/:id/wallet', validate(v.idParam, 'params'), validate(v.walletAdjust), c.adjustWallet);
+// Manual wallet adjustment (credit/debit + ledger row, transactional).
+// Enabled 2026-07-19 after the reference_type enum gained 'adjustment'.
+router.post('/:id/wallet', validate(v.idParam, 'params'), validate(v.walletAdjust), c.adjustWallet);
 
 module.exports = router;

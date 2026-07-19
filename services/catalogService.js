@@ -27,6 +27,7 @@ async function listProducts(query) {
   const { rows, total } = await AdminCatalog.listProducts({ filters, sortBy, sortOrder, limit, offset });
   const data = rows.map((p) => ({
     ...boolify(p, ['is_subscription_eligible', 'is_featured', 'is_active']),
+    thumbnail: p.image_url, // alias for UIs that render `thumbnail`
     min_price: num(p.min_price),
     max_price: num(p.max_price),
     variants_count: num(p.variants_count),
