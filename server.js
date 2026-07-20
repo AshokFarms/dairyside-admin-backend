@@ -47,11 +47,19 @@ const adminLimiter = rateLimit({
   message: { success: false, error: 'Too many requests, please try again later' },
 });
 
-// Health check — no auth, no rate limit. Verifies DB connectivity.
-app.get('/health', async (req, res) => {
+// Liveness — no auth, no rate limit, NO DB. This is what Render's health check
+// pings: it answers "is the process up and serving?" so a transient DB blip
+// can't trigger a restart loop. Always 200 while the server is running.
+app.get('/health', (req, res) => {
+  res.status(200).json({ success: true, data: { status: 'ok', uptime: process.uptime() } });
+});
+
+// Readiness — the DEEP check (DB reachable). Use this for monitoring/debugging,
+// not as the Render health-check path. 503 when the DB is unreachable.
+app.get('/health/db', async (req, res) => {
   try {
     await pool.query('SELECT 1');
-    res.status(200).json({ success: true, data: { status: 'ok', uptime: process.uptime() } });
+    res.status(200).json({ success: true, data: { status: 'ok', db: 'connected' } });
   } catch (err) {
     res.status(503).json({ success: false, error: 'Database unavailable' });
   }
