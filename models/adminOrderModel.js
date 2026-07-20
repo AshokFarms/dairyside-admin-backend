@@ -85,7 +85,9 @@ const AdminOrder = {
       LEFT JOIN product_variants pv ON pv.id = o.product_variant_id
       LEFT JOIN products p ON p.id = pv.product_id
       LEFT JOIN subscriptions s ON s.id = o.subscription_id
-      LEFT JOIN user_addresses a ON a.id = o.address_id
+      -- Subscription-delivery orders carry no address_id; fall back to the
+      -- address on the subscription itself.
+      LEFT JOIN user_addresses a ON a.id = COALESCE(o.address_id, s.address_id)
       WHERE o.id = ?;
     `;
     const [rows] = await pool.query(sql, [id]);
