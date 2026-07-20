@@ -1,0 +1,58 @@
+# Render Blueprint for the DairySide Admin API.
+# Deploy: Render Dashboard → New → Blueprint → pick this repo. Render reads this
+# file, provisions the service, and prompts for every secret (sync:false) below.
+#
+# Secrets are NEVER committed here — set them in the Render dashboard when the
+# blueprint runs (or under the service's Environment tab afterwards).
+services:
+  - type: web
+    name: dairyside-admin-api
+    runtime: node
+    plan: free
+    region: singapore # closest Render region to the Aiven DB / India users
+    branch: main
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: NODE_ENV
+        value: production
+
+      # ── MySQL (Aiven) — REQUIRED. App exits at startup if any are missing. ──
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_NAME
+        sync: false
+
+      # ── CORS — set to the deployed admin panel origin, e.g.
+      #    https://dairyside-admin.vercel.app  (comma-separate for multiple) ──
+      - key: ADMIN_CORS_ORIGINS
+        sync: false
+
+      # ── Admin API auth seam. Keep "false" only while private; flip to "true"
+      #    and set ADMIN_UIDS before this API is reachable publicly. ──
+      - key: ADMIN_AUTH_ENABLED
+        value: "false"
+      - key: ADMIN_UIDS
+        sync: false
+
+      # ── Email (Brevo HTTP) — for order-delivered emails. ──
+      - key: BREVO_API_KEY
+        sync: false
+      - key: MAIL_FROM_EMAIL
+        value: no-reply@dairyside.in
+      - key: MAIL_FROM_NAME
+        value: DairySide
+
+      # ── Links used inside emails (buttons point here). ──
+      - key: FRONTEND_URL
+        sync: false
