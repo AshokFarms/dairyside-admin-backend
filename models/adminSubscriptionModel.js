@@ -56,7 +56,7 @@ const AdminSubscription = {
 
   findById: async (id) => {
     const sql = `
-      SELECT s.*, COALESCE(u.name, u.email, 'Guest') AS customer_name,
+      SELECT s.*, u.id AS customer_id, COALESCE(u.name, u.email, 'Guest') AS customer_name,
              u.email AS customer_email, u.mobile AS customer_phone,
              p.name AS product_name, pv.size_label AS variant_label, pv.sale_price, pv.sku
       FROM subscriptions s

@@ -8,8 +8,9 @@ const AdminDelivery = {
   forDate: async ({ date, shift }) => {
     const params = [date];
     let shiftClause = '';
-    if (shift === 'evening') shiftClause = "AND LOWER(COALESCE(s.delivery_slot, '')) LIKE '%evening%'";
-    else if (shift === 'morning') shiftClause = "AND LOWER(COALESCE(s.delivery_slot, '')) NOT LIKE '%evening%'";
+    const eveningExpr = "(LOWER(COALESCE(s.delivery_slot, '')) LIKE '%evening%' OR LOWER(COALESCE(s.delivery_slot, '')) LIKE '%pm%' OR LOWER(COALESCE(ds.shift, '')) = 'evening')";
+    if (shift === 'evening') shiftClause = `AND ${eveningExpr}`;
+    else if (shift === 'morning') shiftClause = `AND NOT ${eveningExpr}`;
 
     const sql = `
       SELECT o.id, o.status, o.quantity, o.delivery_date, o.order_type,
@@ -17,13 +18,14 @@ const AdminDelivery = {
              u.mobile AS phone,
              p.name AS product_name, pv.size_label,
              s.delivery_slot,
-             CASE WHEN LOWER(COALESCE(s.delivery_slot, '')) LIKE '%evening%' THEN 'evening' ELSE 'morning' END AS shift,
+             CASE WHEN LOWER(COALESCE(s.delivery_slot, '')) LIKE '%evening%' OR LOWER(COALESCE(s.delivery_slot, '')) LIKE '%pm%' OR LOWER(COALESCE(ds.shift, '')) = 'evening' THEN 'evening' ELSE 'morning' END AS shift,
              a.flat_no, a.street_name, a.area, a.pincode, a.phone AS address_phone
       FROM orders o
       LEFT JOIN users u ON u.uid = o.user_id ${C}
       LEFT JOIN product_variants pv ON pv.id = o.product_variant_id
       LEFT JOIN products p ON p.id = pv.product_id
       LEFT JOIN subscriptions s ON s.id = o.subscription_id
+      LEFT JOIN delivery_slots ds ON LOWER(ds.label) = LOWER(s.delivery_slot)
       -- Subscription-delivery orders carry no address_id; fall back to the
       -- address on the subscription itself.
       LEFT JOIN user_addresses a ON a.id = COALESCE(o.address_id, s.address_id)

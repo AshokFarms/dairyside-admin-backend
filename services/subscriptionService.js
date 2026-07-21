@@ -57,7 +57,7 @@ async function getById(id) {
     pause_start_date: s.pause_start_date,
     pause_end_date: s.pause_end_date,
     created_at: s.created_at,
-    customer: { name: s.customer_name, email: s.customer_email, phone: s.customer_phone },
+    customer: { id: s.customer_id, name: s.customer_name, email: s.customer_email, phone: s.customer_phone },
     product: { name: s.product_name, variant_label: s.variant_label, sku: s.sku },
     price_per_delivery: num(s.sale_price) * num(s.quantity),
   };

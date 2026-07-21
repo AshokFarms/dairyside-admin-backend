@@ -19,6 +19,7 @@ function shapeRow(o) {
     order_type: o.order_type,
     payment_status: o.payment_status,
     delivery_shift: o.delivery_shift,
+    delivery_slot: o.delivery_slot,
     delivery_date: o.delivery_date,
     created_at: o.created_at,
   };
@@ -69,6 +70,7 @@ async function getById(id) {
     payment_status: o.payment_status,
     delivery_date: o.delivery_date,
     delivery_shift: o.delivery_shift,
+    delivery_slot: o.delivery_slot,
     created_at: o.created_at,
     customer: {
       name: o.customer_name,

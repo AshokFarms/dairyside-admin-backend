@@ -20,6 +20,7 @@ async function getToday(query) {
     items: [o.product_name, o.size_label].filter(Boolean).join(' '),
     quantity: Number(o.quantity || 0),
     shift: o.shift,
+    delivery_slot: o.delivery_slot,
     status: o.status,
     address: addressLine(o),
     pincode: o.pincode || null,

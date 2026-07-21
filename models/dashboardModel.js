@@ -27,12 +27,13 @@ const Dashboard = {
   deliveryAggregates: async ({ today }) => {
     const sql = `
       SELECT
-        SUM(CASE WHEN LOWER(COALESCE(s.delivery_slot, '')) LIKE '%evening%' THEN 1 ELSE 0 END) AS eveningDeliveries,
-        SUM(CASE WHEN LOWER(COALESCE(s.delivery_slot, '')) LIKE '%evening%' THEN 0 ELSE 1 END) AS morningDeliveries,
+        SUM(CASE WHEN LOWER(COALESCE(s.delivery_slot, '')) LIKE '%evening%' OR LOWER(COALESCE(s.delivery_slot, '')) LIKE '%pm%' OR LOWER(COALESCE(ds.shift, '')) = 'evening' THEN 1 ELSE 0 END) AS eveningDeliveries,
+        SUM(CASE WHEN LOWER(COALESCE(s.delivery_slot, '')) LIKE '%evening%' OR LOWER(COALESCE(s.delivery_slot, '')) LIKE '%pm%' OR LOWER(COALESCE(ds.shift, '')) = 'evening' THEN 0 ELSE 1 END) AS morningDeliveries,
         SUM(o.status = 'delivered') AS completed,
         COUNT(*) AS total
       FROM orders o
       LEFT JOIN subscriptions s ON s.id = o.subscription_id
+      LEFT JOIN delivery_slots ds ON LOWER(ds.label) = LOWER(s.delivery_slot)
       WHERE o.order_type = 'subscription_delivery' AND o.delivery_date = ?;
     `;
     const [rows] = await pool.query(sql, [today]);
