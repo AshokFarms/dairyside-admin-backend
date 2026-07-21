@@ -1,10 +1,7 @@
 const Joi = require('joi');
 
-// Real DB enums (docker/initdb/00-schema.sql). The admin UI also shows
-// 'processing' / 'out_for_delivery' and a 'trial' type, which are NOT storable
-// until the enums are extended (see DDL handoff) — so writes validate against
-// the real set and reject the rest with a clear 400.
-const ORDER_STATUSES = ['pending', 'confirmed', 'delivered', 'cancelled'];
+// Real DB enums (extended to include processing, out_for_delivery, and returned)
+const ORDER_STATUSES = ['pending', 'confirmed', 'processing', 'out_for_delivery', 'delivered', 'cancelled', 'returned'];
 const ORDER_TYPES = ['one_time', 'subscription_delivery'];
 const PAYMENT_STATUSES = ['pending', 'paid', 'failed', 'refunded'];
 
