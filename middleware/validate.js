@@ -18,7 +18,20 @@ function validate(schema, source = 'body') {
       const details = error.details.map((d) => ({ field: d.path.join('.'), message: d.message }));
       return next(new ApiError(400, 'Validation failed', details));
     }
-    req[source] = value;
+    // Express 5 exposes `req.query` as a GETTER-ONLY property: a plain
+    // assignment is silently swallowed, so Joi's coercion/defaults/stripUnknown
+    // would never reach the controller (a query `?flag=false` would arrive as
+    // the STRING "false", which is truthy). Redefine the property instead.
+    if (source === 'query') {
+      Object.defineProperty(req, 'query', {
+        value,
+        writable: true,
+        configurable: true,
+        enumerable: true,
+      });
+    } else {
+      req[source] = value;
+    }
     return next();
   };
 }
