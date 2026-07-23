@@ -1,6 +1,7 @@
 const asyncHandler = require('../middleware/asyncHandler');
 const { ok, created, paginated } = require('../utils/apiResponse');
 const svc = require('../services/catalogService');
+const inventorySvc = require('../services/inventoryService');
 
 // Products
 const listProducts = asyncHandler(async (req, res) => paginated(res, await svc.listProducts(req.query)));
@@ -12,7 +13,13 @@ const deleteProduct = asyncHandler(async (req, res) => ok(res, await svc.deleteP
 // Variants
 const addVariant = asyncHandler(async (req, res) => created(res, await svc.addVariant(req.params.productId, req.body)));
 const updateVariant = asyncHandler(async (req, res) => ok(res, await svc.updateVariant(req.params.id, req.body)));
-const updateStock = asyncHandler(async (req, res) => ok(res, await svc.updateStock(req.params.id, req.body.stock_quantity)));
+// Absolute stock set now goes through the ledgered inventory service (writes a
+// stock_movements ADJUSTMENT + broadcasts) instead of a raw column overwrite —
+// one write path, no bypass. Same request/response contract as before.
+const updateStock = asyncHandler(async (req, res) => {
+  const actor = (req.admin && req.admin.uid) || 'admin:open';
+  return ok(res, await inventorySvc.setAbsoluteStock(req.params.id, req.body.stock_quantity, actor, req.body.note));
+});
 
 // Categories
 const listCategories = asyncHandler(async (req, res) => paginated(res, await svc.listCategories(req.query)));
