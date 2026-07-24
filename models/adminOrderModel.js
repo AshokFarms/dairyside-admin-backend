@@ -49,14 +49,16 @@ const AdminOrder = {
     const orderCol = sortable[sortBy] || 'o.created_at';
 
     const rowsSql = `
-      SELECT o.id, o.total_amount, o.status, o.order_type, o.payment_status,
+      SELECT o.id, o.subscription_id, o.total_amount, o.status, o.order_type, o.payment_status,
              o.delivery_date, o.created_at, o.quantity AS items_count,
+             pv.size_label,
              COALESCE(u.name, u.email, 'Guest') AS customer_name,
              u.mobile AS customer_phone,
              s.delivery_slot,
              CASE WHEN LOWER(COALESCE(s.delivery_slot, '')) LIKE '%evening%' OR LOWER(COALESCE(s.delivery_slot, '')) LIKE '%pm%' OR LOWER(COALESCE(ds.shift, '')) = 'evening' THEN 'evening' ELSE 'morning' END AS delivery_shift
       FROM orders o
       ${USER_JOIN}
+      LEFT JOIN product_variants pv ON pv.id = o.product_variant_id
       LEFT JOIN subscriptions s ON s.id = o.subscription_id
       LEFT JOIN delivery_slots ds ON LOWER(ds.label) = LOWER(s.delivery_slot)
       ${where}

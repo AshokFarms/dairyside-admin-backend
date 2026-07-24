@@ -11,9 +11,11 @@ function shapeRow(o) {
   return {
     id: o.id,
     order_number: formatOrderNumber(o.id, o.created_at),
+    subscription_id: o.subscription_id || null,
     customer_name: o.customer_name,
     customer_phone: o.customer_phone || null,
     items_count: num(o.items_count),
+    size_label: o.size_label || null,
     total_amount: num(o.total_amount),
     status: o.status,
     order_type: o.order_type,
@@ -64,6 +66,7 @@ async function getById(id) {
   return {
     id: o.id,
     order_number: formatOrderNumber(o.id, o.created_at),
+    subscription_id: o.subscription_id || null,
     status: o.status,
     order_type: o.order_type,
     payment_method: o.payment_method,
