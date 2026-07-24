@@ -18,6 +18,8 @@ async function getToday(query) {
     customer: o.customer,
     phone: o.phone || o.address_phone || null,
     items: [o.product_name, o.size_label].filter(Boolean).join(' '),
+    product_name: o.product_name,
+    size_label: o.size_label,
     quantity: Number(o.quantity || 0),
     shift: o.shift,
     delivery_slot: o.delivery_slot,
