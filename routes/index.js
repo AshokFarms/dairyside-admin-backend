@@ -15,6 +15,7 @@ router.use('/trial-packs', require('./trialPackRoutes'));
 router.use('/deliveries', require('./deliveryRoutes'));
 router.use('/pincodes', require('./pincodeRoutes'));
 router.use('/categories', require('./adminCategoryRoutes'));
+router.use('/inventory', require('./adminInventoryRoutes')); // stock: restock/adjust/threshold/low-stock/ledger
 router.use('/audit-logs', require('./auditRoutes')); // read-only customer audit trail
 router.use('/', require('./marketingRoutes')); // /coupons, /banners, /settings, /delivery-slots, /contact-messages
 router.use('/', require('./adminProductRoutes')); // /products, /variants

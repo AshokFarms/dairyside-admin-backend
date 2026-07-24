@@ -48,6 +48,15 @@ function loadConfig() {
       max: Number(process.env.RATE_LIMIT_MAX) || 300,
     },
 
+    // Inventory / real-time. After an admin stock change we notify the CUSTOMER
+    // backend (separate process, same DB) so it can broadcast to connected
+    // shoppers over Socket.IO. Both must share INTERNAL_STOCK_SECRET.
+    stock: {
+      customerApiUrl: process.env.CUSTOMER_API_URL || '',
+      internalSecret: process.env.INTERNAL_STOCK_SECRET || '',
+      defaultLowStockThreshold: Number(process.env.LOW_STOCK_THRESHOLD) || 10,
+    },
+
     logLevel: process.env.LOG_LEVEL || 'info',
   };
 }
