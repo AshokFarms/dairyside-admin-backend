@@ -23,20 +23,38 @@ const SETTINGS_CATALOG = [
 const KNOWN_KEYS = new Set(SETTINGS_CATALOG.map((s) => s.key));
 
 // ── Coupons ──
+// The admin UI speaks 'percentage'; the DB ENUM is ('flat','percent'). Map at
+// this boundary so neither the UI nor the production ENUM has to change.
+const toDbDiscountType = (t) => (t === 'percentage' ? 'percent' : t);
+const toApiDiscountType = (t) => (t === 'percent' ? 'percentage' : t);
+
+// Fields that determine what a redemption is worth. Once a coupon has been
+// redeemed, orders and coupon_redemptions rows are priced against these values;
+// editing them retroactively desynchronises that history. Change by
+// deactivating and cloning instead.
+const LOCKED_ONCE_USED = ['discount_type', 'discount_value', 'min_order_amount', 'max_discount', 'first_order_only', 'applies_to'];
+
 function shapeCoupon(c) {
   return {
     ...c,
+    discount_type: toApiDiscountType(c.discount_type),
     discount_value: num(c.discount_value),
     min_order_amount: num(c.min_order_amount),
     max_discount: num(c.max_discount),
-    is_active: !!c.is_active,
+    first_order_only: !!c.first_order_only,
+    // Kept so the existing list UI's active/inactive toggle keeps working
+    // against the richer status enum.
+    is_active: c.status === 'active',
+    // Tells the UI whether to render the economics fields as read-only.
+    economics_locked: Number(c.used_count || 0) > 0,
   };
 }
 
 async function listCoupons(query) {
   const { page, limit, offset } = parsePagination(query, { defaultSort: 'created_at' });
   const { rows, total } = await AdminMarketing.listCoupons({
-    isActive: query.is_active,
+    // Accept the legacy is_active filter as well as an explicit status.
+    status: query.status || (query.is_active === undefined ? undefined : (query.is_active ? 'active' : 'paused')),
     search: query.search,
     limit,
     offset,
@@ -50,25 +68,102 @@ async function getCoupon(id) {
   return shapeCoupon(c);
 }
 
-async function createCoupon(body) {
-  const existing = await AdminMarketing.listCoupons({ search: body.code, limit: 1, offset: 0 });
-  if (existing.rows.some((r) => r.code === body.code)) {
+// The list UI's toggle sends { is_active }; the form sends { status }. Fold the
+// legacy alias onto the enum so only one representation reaches the DB.
+function withStatus(body) {
+  const out = { ...body };
+  if (out.is_active !== undefined && out.status === undefined) {
+    out.status = out.is_active ? 'active' : 'paused';
+  }
+  // status is the source of truth; is_active is derived from it and written
+  // too, so the pre-migration release can still read this row. Remove both this
+  // line and the column once the contract migration has run.
+  if (out.status !== undefined) out.is_active = out.status === 'active' ? 1 : 0;
+  return out;
+}
+
+async function createCoupon(body, actor) {
+  // Exact-match lookup: a LIKE search could return a different row (SAVE100
+  // when checking SAVE10) and let the duplicate through to a unique-key 500.
+  if (await AdminMarketing.findCouponByCode(body.code)) {
     throw new ApiError(409, `Coupon code '${body.code}' already exists`);
   }
-  const id = await AdminMarketing.createCoupon(body);
+  const id = await AdminMarketing.createCoupon({
+    ...withStatus(body),
+    discount_type: toDbDiscountType(body.discount_type),
+    created_by: actor || null,
+  });
   return getCoupon(id);
 }
 
 async function updateCoupon(id, body) {
-  if (!(await AdminMarketing.findCoupon(id))) throw new ApiError(404, 'Coupon not found');
-  await AdminMarketing.updateCoupon(id, body);
+  const current = await AdminMarketing.findCoupon(id);
+  if (!current) throw new ApiError(404, 'Coupon not found');
+
+  if (Number(current.used_count || 0) > 0) {
+    const attempted = LOCKED_ONCE_USED.filter((f) => body[f] !== undefined);
+    if (attempted.length) {
+      throw new ApiError(
+        409,
+        `This coupon has already been redeemed — ${attempted.join(', ')} can no longer be changed. ` +
+        'Deactivate it and create a new coupon instead.'
+      );
+    }
+  }
+
+  if (body.code && body.code !== current.code) {
+    const clash = await AdminMarketing.findCouponByCode(body.code);
+    if (clash) throw new ApiError(409, `Coupon code '${body.code}' already exists`);
+  }
+
+  const patch = withStatus(body);
+  if (patch.discount_type !== undefined) patch.discount_type = toDbDiscountType(patch.discount_type);
+
+  // couponUpdate can't enforce the ≤100 percentage rule when discount_type is
+  // absent from the patch, so re-check it against the merged result.
+  const mergedType = patch.discount_type ?? current.discount_type;
+  const mergedValue = patch.discount_value ?? current.discount_value;
+  if (mergedType === 'percent' && Number(mergedValue) > 100) {
+    throw new ApiError(400, 'A percentage discount cannot exceed 100.');
+  }
+
+  const mergedFrom = patch.valid_from ?? current.valid_from;
+  const mergedUntil = patch.valid_until ?? current.valid_until;
+  if (mergedFrom && mergedUntil && new Date(mergedUntil) < new Date(mergedFrom)) {
+    throw new ApiError(400, 'valid_until must be on or after valid_from.');
+  }
+
+  await AdminMarketing.updateCoupon(id, patch);
   return getCoupon(id);
 }
 
+// Deactivates rather than deletes — see AdminMarketing.deactivateCoupon.
 async function deleteCoupon(id) {
-  const affected = await AdminMarketing.deleteCoupon(id);
-  if (!affected) throw new ApiError(404, 'Coupon not found');
-  return { id: Number(id) };
+  if (!(await AdminMarketing.findCoupon(id))) throw new ApiError(404, 'Coupon not found');
+  await AdminMarketing.deactivateCoupon(id);
+  return { id: Number(id), is_active: false, deactivated: true };
+}
+
+async function getCouponStats(id) {
+  const coupon = await AdminMarketing.findCoupon(id);
+  if (!coupon) throw new ApiError(404, 'Coupon not found');
+  const s = await AdminMarketing.couponStats(id);
+  const redemptions = Number(s.redemptions);
+  return {
+    id: Number(id),
+    code: coupon.code,
+    usage_limit: num(coupon.usage_limit),
+    reservations: Number(s.reservations),
+    redemptions,
+    pending: Number(s.pending),
+    released: Number(s.released),
+    unique_customers: Number(s.unique_customers),
+    total_discount: num(s.total_discount),
+    remaining: coupon.usage_limit === null ? null : Math.max(Number(coupon.usage_limit) - Number(coupon.used_count || 0), 0),
+    // Reservations that never became payments — a low rate points at checkout,
+    // not at the offer.
+    conversion_rate: s.reservations > 0 ? Math.round((redemptions / Number(s.reservations)) * 100) : null,
+  };
 }
 
 // ── Banners ──
@@ -156,6 +251,7 @@ module.exports = {
   createCoupon,
   updateCoupon,
   deleteCoupon,
+  getCouponStats,
   listBanners,
   createBanner,
   updateBanner,

@@ -37,6 +37,23 @@ applied on top to match the UI contract exactly:
 `coupons.discount_type ENUM('flat','percentage')` and
 `contact_messages.status ENUM('pending','resolved')`.
 
+> **⚠️ CORRECTION (2026-07-25).** The `coupons.discount_type` half of that claim
+> was **wrong** — the column was left as `ENUM('flat','percent')` and the tweak
+> to `'percentage'` was never applied. The validator meanwhile accepted
+> `'percentage'`, so **every percentage coupon created through the admin API
+> failed to insert**. This doc asserting the fix was applied is a large part of
+> why it went unnoticed for six days.
+>
+> Fixed 2026-07-25 by mapping at the service boundary (`marketingService`
+> translates `percentage` ↔ `percent`) rather than touching the ENUM, so neither
+> the UI nor the column had to change.
+
+> **The coupon schema below is superseded.** See
+> [`MernApp1-Grocery-backend/COUPONS.md`](../../MernApp1-Grocery-backend/COUPONS.md)
+> for the current model. `runDdl2026-07-25-coupons.js` added the eligibility
+> columns, a `status` enum, `coupon_redemptions`, `user_commerce_state`, and the
+> coupon snapshot on `orders`.
+
 Consequently these are now LIVE endpoints (all verified, test data cleaned up):
 
 | Resource | Endpoints |
@@ -68,7 +85,8 @@ resources are NOT implemented server-side (they'd be dead ends). If you want
 them, run the DDL and tell me — each is then a small resource to add.
 
 ```sql
--- Coupons (couponsApi)
+-- Coupons (couponsApi) — SUPERSEDED, see COUPONS.md. Kept as the 2026-07-19
+-- baseline that runDdl2026-07-25-coupons.js migrates FROM.
 CREATE TABLE coupons (
   id INT AUTO_INCREMENT PRIMARY KEY,
   code VARCHAR(40) NOT NULL UNIQUE,

@@ -11,6 +11,7 @@ const router = express.Router();
 router.get('/coupons', validate(v.listQuery, 'query'), c.listCoupons);
 router.post('/coupons', validate(v.couponCreate), c.createCoupon);
 router.get('/coupons/:id', validate(v.idParam, 'params'), c.getCoupon);
+router.get('/coupons/:id/stats', validate(v.idParam, 'params'), c.getCouponStats);
 router.put('/coupons/:id', validate(v.idParam, 'params'), validate(v.couponUpdate), c.updateCoupon);
 router.delete('/coupons/:id', validate(v.idParam, 'params'), c.deleteCoupon);
 

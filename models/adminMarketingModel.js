@@ -2,6 +2,25 @@
 // messages (the tables created 2026-07-19).
 const pool = require('../config/database');
 
+/**
+ * Normalise a datetime for a MySQL DATETIME column.
+ *
+ * The API contract is ISO 8601 (Joi.date().iso()) and the validate middleware
+ * hands controllers a coerced Date, which mysql2 serialises correctly. But a
+ * raw ISO STRING — from a seed script, a migration, or any caller that skips
+ * the middleware — is rejected outright: MySQL will not accept the 'T'
+ * separator or the 'Z' suffix. Normalising here makes the model correct
+ * whatever the entry point, instead of correct-if-Joi-ran.
+ *
+ * Stored in UTC, matching what the Date object would have produced.
+ */
+const toMysqlDateTime = (v) => {
+  if (v === null || v === undefined || v === '') return null;
+  const d = v instanceof Date ? v : new Date(v);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 19).replace('T', ' ');
+};
+
 // Generic helpers shared by the small CRUD tables.
 async function listWithCount(table, { where = '', params = [], orderBy, limit, offset }) {
   const [rows] = await pool.query(
@@ -40,12 +59,12 @@ async function updateFields(table, id, data, columns, boolColumns = []) {
 
 const AdminMarketing = {
   // ── Coupons ──
-  listCoupons: ({ isActive, search, limit, offset }) => {
+  listCoupons: ({ status, search, limit, offset }) => {
     const clauses = [];
     const params = [];
-    if (isActive !== undefined) {
-      clauses.push('is_active = ?');
-      params.push(isActive ? 1 : 0);
+    if (status) {
+      clauses.push('status = ?');
+      params.push(status);
     }
     if (search) {
       clauses.push('(code LIKE ? OR description LIKE ?)');
@@ -55,27 +74,68 @@ const AdminMarketing = {
     return listWithCount('coupons', { where, params, orderBy: 'created_at DESC', limit, offset });
   },
   findCoupon: (id) => findById('coupons', id),
+  findCouponByCode: async (code) => {
+    const [rows] = await pool.query('SELECT * FROM coupons WHERE code = ?', [code]);
+    return rows[0] || null;
+  },
   createCoupon: async (d) => {
     const [result] = await pool.query(
       `INSERT INTO coupons
         (code, description, discount_type, discount_value, min_order_amount,
-         max_discount, usage_limit, valid_from, valid_until, is_active)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         max_discount, usage_limit, per_user_limit, first_order_only, applies_to,
+         visibility, valid_from, valid_until, status, is_active, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         d.code, d.description || null, d.discount_type, d.discount_value,
         d.min_order_amount ?? 0, d.max_discount ?? null, d.usage_limit ?? null,
-        d.valid_from || null, d.valid_until || null, d.is_active === false ? 0 : 1,
+        d.per_user_limit ?? 1, d.first_order_only ? 1 : 0, d.applies_to || 'one_time',
+        d.visibility || 'private',
+        toMysqlDateTime(d.valid_from), toMysqlDateTime(d.valid_until), d.status || 'draft',
+        // Written alongside status for the duration of the expand/contract
+        // migration, so rolling back to the previous release needs no schema
+        // change. Drop this when is_active is dropped.
+        (d.status || 'draft') === 'active' ? 1 : 0,
+        d.created_by || null,
       ]
     );
     return result.insertId;
   },
   updateCoupon: (id, d) =>
-    updateFields('coupons', id, d,
-      ['code', 'description', 'discount_type', 'discount_value', 'min_order_amount', 'max_discount', 'usage_limit', 'valid_from', 'valid_until'],
-      ['is_active']),
-  deleteCoupon: async (id) => {
-    const [result] = await pool.query('DELETE FROM coupons WHERE id = ?', [id]);
+    updateFields('coupons', id, {
+      ...d,
+      // Same reasoning as createCoupon — normalise whatever the caller passed.
+      ...(d.valid_from !== undefined ? { valid_from: toMysqlDateTime(d.valid_from) } : {}),
+      ...(d.valid_until !== undefined ? { valid_until: toMysqlDateTime(d.valid_until) } : {}),
+    },
+      ['code', 'description', 'discount_type', 'discount_value', 'min_order_amount',
+       'max_discount', 'usage_limit', 'per_user_limit', 'applies_to', 'visibility',
+       'valid_from', 'valid_until', 'status',
+       // Mirror of status — see createCoupon. marketingService derives it.
+       'is_active'],
+      ['first_order_only']),
+  // Soft delete: orders and coupon_redemptions reference this row, so the
+  // history must stay resolvable. Pausing (rather than expiring) keeps the
+  // validity window intact so the campaign can be resumed.
+  deactivateCoupon: async (id) => {
+    const [result] = await pool.query("UPDATE coupons SET status = 'paused' WHERE id = ?", [id]);
     return result.affectedRows;
+  },
+  // Read off the redemption ledger, not coupons.used_count — used_count is a
+  // denormalised cache that includes reservations still awaiting payment.
+  couponStats: async (id) => {
+    const [rows] = await pool.query(
+      `SELECT
+         COUNT(*)                                                       AS reservations,
+         COALESCE(SUM(status = 'committed'), 0)                         AS redemptions,
+         COALESCE(SUM(status = 'reserved'), 0)                          AS pending,
+         COALESCE(SUM(status = 'released'), 0)                          AS released,
+         COALESCE(SUM(CASE WHEN status = 'committed' THEN discount_amount END), 0) AS total_discount,
+         COUNT(DISTINCT CASE WHEN status = 'committed' THEN user_id END) AS unique_customers
+       FROM coupon_redemptions
+       WHERE coupon_id = ?`,
+      [id]
+    );
+    return rows[0];
   },
 
   // ── Banners ──
