@@ -5,9 +5,11 @@ const svc = require('../services/marketingService');
 // Coupons
 const listCoupons = asyncHandler(async (req, res) => paginated(res, await svc.listCoupons(req.query)));
 const getCoupon = asyncHandler(async (req, res) => ok(res, await svc.getCoupon(req.params.id)));
-const createCoupon = asyncHandler(async (req, res) => created(res, await svc.createCoupon(req.body)));
+const createCoupon = asyncHandler(async (req, res) =>
+  created(res, await svc.createCoupon(req.body, (req.admin && req.admin.uid) || 'admin:open')));
 const updateCoupon = asyncHandler(async (req, res) => ok(res, await svc.updateCoupon(req.params.id, req.body)));
 const deleteCoupon = asyncHandler(async (req, res) => ok(res, await svc.deleteCoupon(req.params.id)));
+const getCouponStats = asyncHandler(async (req, res) => ok(res, await svc.getCouponStats(req.params.id)));
 
 // Banners
 const listBanners = asyncHandler(async (req, res) => paginated(res, await svc.listBanners(req.query)));
@@ -39,6 +41,7 @@ module.exports = {
   createCoupon,
   updateCoupon,
   deleteCoupon,
+  getCouponStats,
   listBanners,
   createBanner,
   updateBanner,
