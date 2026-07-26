@@ -11,7 +11,11 @@ const num = (v) => (v === null || v === undefined ? null : Number(v));
 const SETTINGS_CATALOG = [
   { key: 'free_delivery_threshold', default: '200', description: 'Minimum order amount for free delivery (₹)', type: 'number' },
   { key: 'delivery_fee', default: '20', description: 'Default delivery fee (₹)', type: 'number' },
-  { key: 'gst_percentage', default: '5', description: 'GST percentage applied to orders', type: 'number' },
+  // gst_percentage removed 2026-07-26: nothing read it, and it advertised a
+  // setting that could not be honoured. No GST is charged. A dairy catalog
+  // cannot use one global rate either — fresh milk and eggs are nil-rated while
+  // butter and ghee are taxable — so if registration happens the rate belongs
+  // per product variant alongside an HSN code, not in app_settings.
   { key: 'max_wallet_balance', default: '5000', description: 'Maximum wallet balance a user can hold (₹)', type: 'number' },
   { key: 'referral_bonus', default: '50', description: 'Referral bonus amount (₹)', type: 'number' },
   { key: 'trial_refund_days', default: '7', description: 'Days within which trial refunds are processed', type: 'number' },
@@ -19,6 +23,13 @@ const SETTINGS_CATALOG = [
   { key: 'support_phone', default: '', description: 'Customer support phone', type: 'text' },
   { key: 'order_prefix', default: 'SWD', description: 'Order number prefix', type: 'text' },
   { key: 'maintenance_mode', default: 'false', description: 'Enable maintenance mode (disables ordering)', type: 'boolean' },
+  { key: 'razorpay_enabled', default: 'true', description: 'Enable Razorpay Payment Gateway', type: 'boolean' },
+  { key: 'cod_enabled', default: 'true', description: 'Enable Cash on Delivery (COD)', type: 'boolean' },
+  { key: 'wallet_enabled', default: 'true', description: 'Enable Wallet Payments', type: 'boolean' },
+  { key: 'upi_enabled', default: 'true', description: 'Enable Direct UPI Payments', type: 'boolean' },
+  { key: 'active_payment_gateway', default: 'razorpay', description: 'Active primary payment gateway', type: 'text' },
+  { key: 'razorpay_key_id', default: 'rzp_test_T0ROrLNim09D7D', description: 'Razorpay Key ID', type: 'text' },
+  { key: 'razorpay_key_secret', default: 'UCc6qOXIUjbjFS4TtP9QuXKn', description: 'Razorpay Key Secret', type: 'password' },
 ];
 const KNOWN_KEYS = new Set(SETTINGS_CATALOG.map((s) => s.key));
 
