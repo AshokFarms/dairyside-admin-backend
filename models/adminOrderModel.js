@@ -29,14 +29,24 @@ function buildFilters(f = {}) {
     params.push(f.dateTo);
   }
   if (f.search) {
-    // Numeric search → order id; otherwise customer name/email/mobile.
-    if (/^\d+$/.test(f.search)) {
-      clauses.push('o.id = ?');
-      params.push(Number(f.search));
-    } else {
-      clauses.push('(u.name LIKE ? OR u.email LIKE ? OR u.mobile LIKE ?)');
-      const like = `%${f.search}%`;
-      params.push(like, like, like);
+    const raw = String(f.search).trim();
+    if (raw) {
+      // Clean leading # symbol
+      const clean = raw.replace(/^#/, '');
+
+      // Parse order ID if formatted as DS260727-0098, DS2607270098, 0098, or 98
+      const orderIdMatch = clean.match(/(?:DS\d{6}-)?0*(\d+)/i);
+      const extractedId = orderIdMatch ? parseInt(orderIdMatch[1], 10) : null;
+
+      const like = `%${clean}%`;
+
+      if (extractedId && !isNaN(extractedId) && extractedId > 0 && extractedId < 2147483647) {
+        clauses.push('(o.id = ? OR u.name LIKE ? OR u.email LIKE ? OR u.mobile LIKE ?)');
+        params.push(extractedId, like, like, like);
+      } else {
+        clauses.push('(u.name LIKE ? OR u.email LIKE ? OR u.mobile LIKE ?)');
+        params.push(like, like, like);
+      }
     }
   }
   return { where: clauses.length ? `WHERE ${clauses.join(' AND ')}` : '', params };
