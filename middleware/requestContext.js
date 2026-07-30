@@ -13,6 +13,11 @@ function requestContext(req, res, next) {
   res.on('finish', () => {
     const ms = Number(process.hrtime.bigint() - start) / 1e6;
     req.log.info('request.completed', { status: res.statusCode, durationMs: Math.round(ms) });
+    logger.flush(requestId);
+  });
+  
+  res.on('close', () => {
+    logger.flush(requestId);
   });
 
   next();
