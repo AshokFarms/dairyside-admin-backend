@@ -113,6 +113,14 @@ if (require.main === module) {
       logger.error('admin.auth_MISCONFIGURED', {
         detail: 'ADMIN_AUTH_ENABLED=true but ADMIN_UIDS is empty — every request will be rejected.',
       });
+    } else if (!require('./config/firebaseAdmin').isAvailable()) {
+      // Auth enforced with no way to verify anyone = a locked-out deployment
+      // where every route 401s and no password can ever work. Say so at boot
+      // rather than leaving it to be discovered through failed sign-ins.
+      logger.error('admin.auth_NO_CREDENTIALS', {
+        detail: 'ADMIN_AUTH_ENABLED=true but Firebase credentials are missing — nobody can sign in. ' +
+          'Set FIREBASE_SERVICE_ACCOUNT_JSON or GOOGLE_APPLICATION_CREDENTIALS.',
+      });
     }
   });
 

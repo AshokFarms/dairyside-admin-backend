@@ -76,12 +76,26 @@ async function authorizeIdToken(idToken) {
     throw new ApiError(400, 'idToken required');
   }
 
+  // Separate "this server cannot verify anything" from "your token is bad".
+  // Collapsing them tells an operator their sign-in failed when the real cause
+  // is a deployment with no Firebase credentials — and they will go on retrying
+  // a password that was never the problem. 4xx on purpose: errorHandler
+  // replaces the body of anything >= 500, which would hide the message.
+  let sdk;
+  try {
+    sdk = getAdmin();
+  } catch (err) {
+    throw new ApiError(
+      403,
+      'Admin sign-in is unavailable: this server has no Firebase credentials. ' +
+        'Set FIREBASE_SERVICE_ACCOUNT_JSON (or GOOGLE_APPLICATION_CREDENTIALS) on the API deployment.'
+    );
+  }
+
   let decoded;
   try {
-    decoded = await getAdmin().auth().verifyIdToken(idToken, true);
+    decoded = await sdk.auth().verifyIdToken(idToken, true);
   } catch (err) {
-    // Covers a missing-credentials init failure too — surfaced as "not signed
-    // in" rather than a 500, since the caller can do nothing about either.
     throw new ApiError(401, 'Invalid or expired sign-in');
   }
 
