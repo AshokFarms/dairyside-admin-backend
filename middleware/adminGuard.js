@@ -1,36 +1,45 @@
-// Admin authorization seam.
-//
-// Admin login is intentionally NOT built yet (product decision). This middleware
-// is mounted on every /v1/admin route so enforcement is a single config flip
-// later — no route changes needed.
+// Admin authorization.
 //
 //   ADMIN_AUTH_ENABLED=false (default)  -> pass through, but tag the request.
-//   ADMIN_AUTH_ENABLED=true             -> require an authenticated admin.
+//   ADMIN_AUTH_ENABLED=true             -> require a valid admin session cookie
+//                                          whose uid is in ADMIN_UIDS.
 //
-// When enabling, implement the real identity check where marked below (e.g.
-// verify the Firebase session cookie shared with the customer app, then check
-// the uid against config.auth.adminUids). Until then it must stay closed-by-flag,
-// never silently authorize.
+// Identity comes from a Firebase session cookie minted by /v1/admin/auth/login
+// (see services/adminAuth.service.js). The allowlist is re-checked here on every
+// request, so removing a uid from ADMIN_UIDS takes effect immediately rather
+// than whenever that admin's cookie happens to expire.
+//
+// NOTE on the open mode: it is still the default so existing deployments don't
+// break on upgrade, but it is not a safe posture for an internet-facing API.
+// Set ADMIN_AUTH_ENABLED=true and ADMIN_UIDS=<your uid> to close it.
 const config = require('../config/env');
 const { ApiError } = require('./errorHandler');
+const auth = require('../services/adminAuth.service');
 
-function adminGuard(req, res, next) {
+async function adminGuard(req, res, next) {
   if (!config.auth.enabled) {
     req.admin = { authenticated: false, mode: 'open' };
     return next();
   }
 
-  // ── Real enforcement path (active only when ADMIN_AUTH_ENABLED=true) ──
-  // TODO(auth): resolve the caller's identity from the session cookie / token.
-  const uid = req.admin?.uid; // populated by a future auth middleware
-  if (!uid) {
+  // Refuse to run "enforced" with an empty allowlist. isAllowedAdmin() already
+  // fails closed, so this would deny every request anyway — saying so plainly
+  // beats an operator debugging a panel that rejects a correct password.
+  if (config.auth.adminUids.length === 0) {
+    return next(
+      new ApiError(500, 'Admin auth is enabled but ADMIN_UIDS is empty — nobody can sign in')
+    );
+  }
+
+  const admin = await auth.verifySession(req.cookies?.[auth.COOKIE_NAME]);
+  if (!admin) {
     return next(new ApiError(401, 'Authentication required'));
   }
-  if (config.auth.adminUids.length > 0 && !config.auth.adminUids.includes(uid)) {
-    return next(new ApiError(403, 'Admin access required'));
-  }
-  req.admin = { authenticated: true, uid, mode: 'enforced' };
+
+  req.admin = { authenticated: true, uid: admin.uid, email: admin.email, mode: 'enforced' };
   return next();
 }
 
-module.exports = adminGuard;
+// Wrapped so a rejected promise reaches the error handler rather than becoming
+// an unhandled rejection — this runs on every admin route.
+module.exports = (req, res, next) => adminGuard(req, res, next).catch(next);

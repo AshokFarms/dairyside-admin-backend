@@ -3,6 +3,7 @@ const { ApiError } = require('../middleware/errorHandler');
 const { istDateString } = require('../utils/dates');
 const { formatOrderNumber } = require('../utils/orderNumber');
 const { notifyOrdersDelivered } = require('./orderNotification.service');
+const { notifyOrderStatusChange } = require('./orderNotify');
 
 function addressLine(o) {
   return [o.flat_no, o.street_name, o.area].filter(Boolean).join(', ') || null;
@@ -45,12 +46,14 @@ async function complete(orderId) {
   if (!result.found) throw new ApiError(404, 'Order not found');
   // Delivered email (one-time orders only) — fire-and-forget, never blocks ops.
   notifyOrdersDelivered([Number(orderId)]);
+  notifyOrderStatusChange([Number(orderId)]); // live push to the customer
   return { id: result.id, status: result.status };
 }
 
 async function bulkComplete(ids) {
   const updated = await AdminDelivery.bulkComplete(ids);
   notifyOrdersDelivered(ids.map(Number));
+  notifyOrderStatusChange(ids.map(Number));
   return { completed: updated };
 }
 

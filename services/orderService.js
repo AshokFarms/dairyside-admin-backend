@@ -4,6 +4,7 @@ const { ApiError } = require('../middleware/errorHandler');
 const { parsePagination } = require('../utils/pagination');
 const { formatOrderNumber } = require('../utils/orderNumber');
 const { notifyOrdersDelivered } = require('./orderNotification.service');
+const { notifyOrderStatusChange } = require('./orderNotify');
 
 const num = (v) => Number(v || 0);
 
@@ -110,11 +111,17 @@ async function updateStatus(id, status) {
   if (!affected) throw new ApiError(404, 'Order not found');
   // Delivered email (one-time orders only) — fire-and-forget.
   if (status === 'delivered') notifyOrdersDelivered([Number(id)]);
+  // Live push to the customer watching this order — every status, not just
+  // delivered: "out for delivery" is the one they actually sit and wait for.
+  notifyOrderStatusChange([Number(id)]);
   return { id, status };
 }
 
 async function bulkUpdateStatus(ids, status) {
   const affected = await AdminOrder.bulkUpdateStatus(ids, status);
+  // Fans out per owning customer on the other side, so a bulk sweep reaches
+  // each of them individually rather than nobody.
+  notifyOrderStatusChange(ids.map(Number));
   return { updated: affected, status };
 }
 

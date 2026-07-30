@@ -1,6 +1,7 @@
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 
 const config = require('./config/env');
@@ -36,6 +37,10 @@ app.use(
 );
 
 app.use(express.json({ limit: '1mb' }));
+// Deliberately NO urlencoded parser: keeping this API json-only means a
+// cross-site form post can never produce a parseable body, which is what makes
+// the SameSite=None session cookie safe (see adminAuth.service.js).
+app.use(cookieParser());
 app.use(requestContext);
 
 // Rate limiting on the admin surface.
@@ -65,7 +70,15 @@ app.get('/health/db', async (req, res) => {
   }
 });
 
-// Primary admin API.
+// Sign-in surface. Mounted BEFORE the guarded tree because these three routes
+// are the ones an unauthenticated caller is allowed to reach.
+app.use('/v1/admin/auth', require('./routes/adminAuthRoutes'));
+
+// Process-to-process bridge from the customer backend (shared-secret auth).
+// Also outside the guarded tree — the caller is a server, not a signed-in admin.
+app.use('/v1/admin/internal', require('./routes/internalRoutes'));
+
+// Primary admin API — everything here is behind adminGuard (see routes/index.js).
 app.use('/v1/admin', adminLimiter, adminRoutes);
 
 // Backward-compatible aliases for the already-wired frontend redux slices
@@ -80,8 +93,27 @@ app.use(errorHandler);
 // Only bind a port when run directly (`node server.js`). When required by tests
 // (supertest drives the app object in-process) we skip listen + signal handlers.
 if (require.main === module) {
-  const server = app.listen(config.port, () => {
+  // Wrap Express in an HTTP server so Socket.IO can share the port. REST is
+  // unaffected; the socket only adds a push channel for the panel.
+  const http = require('http');
+  const { initSocket } = require('./services/socket');
+
+  const httpServer = http.createServer(app);
+  initSocket(httpServer);
+
+  const server = httpServer.listen(config.port, () => {
     logger.info('server.started', { port: config.port, env: config.env });
+    // Make the open posture impossible to deploy by accident unnoticed.
+    if (!config.auth.enabled) {
+      logger.warn('admin.auth_DISABLED', {
+        detail: 'Every /v1/admin route is reachable WITHOUT authentication. ' +
+          'Set ADMIN_AUTH_ENABLED=true and ADMIN_UIDS=<firebase uid> to close it.',
+      });
+    } else if (config.auth.adminUids.length === 0) {
+      logger.error('admin.auth_MISCONFIGURED', {
+        detail: 'ADMIN_AUTH_ENABLED=true but ADMIN_UIDS is empty — every request will be rejected.',
+      });
+    }
   });
 
   // ── Graceful shutdown ──
