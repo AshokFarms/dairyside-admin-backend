@@ -85,11 +85,11 @@ async function authorizeIdToken(idToken) {
   try {
     sdk = getAdmin();
   } catch (err) {
-    throw new ApiError(
-      403,
-      'Admin sign-in is unavailable: this server has no Firebase credentials. ' +
-        'Set FIREBASE_SERVICE_ACCOUNT_JSON (or GOOGLE_APPLICATION_CREDENTIALS) on the API deployment.'
-    );
+    // Pass the SPECIFIC reason through — "not set" and "set but malformed" need
+    // completely different fixes, and a single generic message costs a
+    // debugging round trip every time. This is configuration state, not secret
+    // material, and the caller already knows auth is enabled here.
+    throw new ApiError(403, `Admin sign-in is unavailable. ${err.message}`);
   }
 
   let decoded;
