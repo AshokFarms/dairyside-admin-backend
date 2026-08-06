@@ -12,6 +12,7 @@ router.use('/orders', require('./orderRoutes'));
 router.use('/customers', require('./customerRoutes'));
 router.use('/subscriptions', require('./subscriptionRoutes'));
 router.use('/trial-packs', require('./trialPackRoutes'));
+router.use('/farm-visit', require('./farmVisitRoutes')); // farm content, slots, visit bookings
 router.use('/deliveries', require('./deliveryRoutes'));
 router.use('/pincodes', require('./pincodeRoutes'));
 router.use('/categories', require('./adminCategoryRoutes'));

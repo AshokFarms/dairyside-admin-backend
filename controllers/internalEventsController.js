@@ -89,15 +89,60 @@ async function announceLowStock(variantIds) {
   return low.length;
 }
 
+/**
+ * A farm visit was booked on the storefront.
+ *
+ * Re-read like everything else here, so the customer backend cannot put a
+ * headcount or a visitor name on an operator's screen that the DB does not
+ * agree with. Only live bookings are announced: by the time this arrives the
+ * visitor may already have cancelled, and a cancelled booking on the live feed
+ * would send staff chasing a visit that is not happening.
+ */
+async function announceFarmVisitBookings(bookingIds) {
+  const ids = idList(bookingIds);
+  if (ids.length === 0) return 0;
+
+  const [rows] = await pool.query(
+    `SELECT b.id, b.booking_ref, b.visitor_name, b.visitor_phone, b.adults, b.children,
+            b.seats, b.status, s.visit_date, s.start_time, f.name AS farm_name
+       FROM farm_visit_bookings b
+       JOIN farm_visit_slots s ON s.id = b.slot_id
+       JOIN farms f            ON f.id = b.farm_id
+      WHERE b.id IN (${ids.map(() => '?').join(',')})`,
+    ids
+  );
+
+  const live = rows.filter((r) => r.status === 'PENDING' || r.status === 'CONFIRMED');
+
+  for (const r of live) {
+    emitToAdmins('farmVisit:new', {
+      bookingId: r.id,
+      bookingRef: r.booking_ref,
+      visitorName: r.visitor_name,
+      visitorPhone: r.visitor_phone,
+      adults: Number(r.adults),
+      children: Number(r.children),
+      seats: Number(r.seats),
+      status: r.status,
+      visitDate: r.visit_date,
+      startTime: r.start_time,
+      farmName: r.farm_name,
+    });
+  }
+  return live.length;
+}
+
 // POST /v1/admin/internal/events
-//   { type: 'order:new', orderIds: [...] }
-//   { type: 'stock:low', variantIds: [...] }
+//   { type: 'order:new',    orderIds: [...] }
+//   { type: 'stock:low',    variantIds: [...] }
+//   { type: 'farmVisit:new', bookingIds: [...] }
 const events = asyncHandler(async (req, res) => {
   const { type } = req.body || {};
   let announced = 0;
 
   if (type === 'order:new') announced = await announceNewOrders(req.body.orderIds);
   else if (type === 'stock:low') announced = await announceLowStock(req.body.variantIds);
+  else if (type === 'farmVisit:new') announced = await announceFarmVisitBookings(req.body.bookingIds);
   else return res.status(400).json({ success: false, error: 'Unknown event type' });
 
   logger.debug?.('admin.internal_event', { type, announced });
